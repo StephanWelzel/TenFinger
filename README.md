@@ -36,11 +36,11 @@ This is a web-based application designed to help users learn and improve their t
 
 ## Usage Instructions
 
-1.) <b>Register:</b>Create a new account.<br><br>
-2.) <b>Login:</b>Use your credentials to log in.<br><br>
-3.) <b>Choose a Text:</b>Select a text to start your typing session<br><br>
-4.) <b>Start Typing:</b>Begin practicing and receive real-time feedback.<br><br>
-5.) <b>Review Performance:</b>Check your CPM, accuracy, and mistakes in the database<br><br><br>
+1.) <b>Register:</b> Create a new account.<br><br>
+2.) <b>Login:</b> Use your credentials to log in.<br><br>
+3.) <b>Choose a Text:</b> Select a text to start your typing session<br><br>
+4.) <b>Start Typing:</b> Begin practicing and receive real-time feedback.<br><br>
+5.) <b>Review Performance:</b> Check your CPM, accuracy, and mistakes in the database<br><br><br>
 
 ## License
 
