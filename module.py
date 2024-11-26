@@ -19,6 +19,10 @@ class User(db.Model):
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.now())
     letter_stats = db.Column(JSONB, nullable=True)  # Stellt sicher, dass es ein JSONB-Feld ist
 
+    # Relationships (did not test it in this form yet)
+    writing_sessions = db.relationship('WritingInformation', back_populates='user')
+    mistakes = db.relationship('MistakesLetters', back_populates='user')
+
     # Funktion zum Setzen des Passworts
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -35,6 +39,9 @@ class Text(db.Model):
     category = db.Column(db.String)
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.now())
     text_length = db.Column(db.Integer)
+
+    # Relationships (did not test it in this form yet)
+    writing_sessions = db.relationship('WritingInformation', back_populates='text')
 
     def __init__(self, text_id, content):
         self.text_id = text_id
@@ -54,6 +61,9 @@ class WritingInformation(db.Model):
     ended_at = db.Column(db.TIMESTAMP)  # Endzeit (wird später gesetzt)
     acc = db.Column(db.Numeric)     # Genauigkeit des Tippvorgangs (Accuracy)
 
+    # Relationships (did not test it in this form yet)
+    user = db.relationship('User', back_populates='writing_sessions')
+    text = db.relationship('Text', back_populates='writing_sessions')
 
 class MistakesLetters(db.Model):
     __tablename__ = 'mistakes_letters'
@@ -63,6 +73,9 @@ class MistakesLetters(db.Model):
     expected_letter = db.Column(db.String(10))  # Der erwartete Buchstabe
     mistake_count = db.Column(db.Integer)
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.now())
+
+    # Relationships (did not test it in this form yet)
+    user = db.relationship('User', back_populates='mistakes')
 
 
 # Funktion, um die Datenbank zu erstellen
