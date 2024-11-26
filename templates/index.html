@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>10-Finger-Tippsystem</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .text { font-size: 24px; margin-top: 20px; }
+        .correct { color: green; }
+        .incorrect { color: red; }
+        .untyped { color: black; }
+    </style>
+</head>
+<body>
+    <h1>Willkommen zum 10-Finger-Tippsystem</h1>
+
+    <h2>Wähle einen Text aus:</h2>
+    <select id="text-selection">
+        <option value="">--Wähle einen Text--</option>
+    </select>
+    <button onclick="loadSelectedText()">Text Laden</button>
+
+    <div class="text">
+        <p id="text-to-type"></p>  <!-- Der ausgewählte Text wird hier angezeigt -->
+    </div>
+
+    <script>
+        let currentCharIndex = 0;  // Index für den aktuellen Buchstaben im gesamten Text
+        let letterMistakes = [];
+        let fullText = "";  // Der gesamte Text wird hier gespeichert
+        let mistakesCounter = 0;  // Fehlerzähler für den gesamten Test
+        let wi_id = "";  // wi_id wird hier gespeichert, nachdem der Test gestartet wurde
+
+        // Texte aus der Datenbank abrufen und im Dropdown-Menü anzeigen
+        function loadTexts() {
+            fetch('/get_texts')
+                .then(response => response.json())
+                .then(data => {
+                    const textSelection = document.getElementById('text-selection');
+                    data.forEach(text => {
+                        let option = document.createElement('option');
+                        option.value = text.text_id;
+                        option.text = text.content.substring(0, 50) + '...';  // Zeige den Anfang des Textes an
+                        textSelection.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Fehler beim Abrufen der Texte:', error);
+                });
+        }
+
+        // Den ausgewählten Text laden und anzeigen
+        function loadSelectedText() {
+            const selectedTextId = document.getElementById('text-selection').value;
+            if (!selectedTextId) {
+                alert('Bitte wähle einen Text aus.');
+                return;
+            }
+
+            fetch(`/get_text/${selectedTextId}`)
+                .then(response => response.json())
+                .then(data => {
+                    fullText = data.content;  // Den gesamten Text speichern
+                    currentCharIndex = 0;  // Zurücksetzen des Indexes für den Tippvorgang
+                    updateDisplay();  // Den geladenen Text anzeigen
+
+                    // Starte die Tipp-Sitzung und erhalte die wi_id
+                    startTypingSession(selectedTextId);
+                })
+                .catch(error => {
+                    console.error('Fehler beim Laden des Textes:', error);
+                });
+        }
+
+        // Anzeige des Textes aktualisieren
+        function updateDisplay() {
+            let displayHTML = '';
+
+            for (let i = 0; i < fullText.length; i++) {
+                // Prüfen, ob der aktuelle Index erreicht ist
+                if (i < currentCharIndex) {
+                    displayHTML += `<span class="correct">${fullText[i]}</span>`;
+                } else {
+                    displayHTML += `<span class="untyped">${fullText[i]}</span>`;
+                }
+            }
+
+            document.getElementById('text-to-type').innerHTML = displayHTML;
+        }
+
+        // Starte den Tippvorgang und erhalte die wi_id vom Backend
+        function startTypingSession(text_id) {
+            fetch('/start_typing_session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text_id: text_id })
+            })
+            .then(response => response.json())
+            .then(result => {
+                console.log('Tipp-Sitzung gestartet, wi_id:', result.wi_id);
+                wi_id = result.wi_id;  // wi_id für spätere Übertragung speichern
+            })
+            .catch(error => {
+                console.error('Fehler beim Starten der Tipp-Sitzung:', error);
+            });
+        }
+
+        // Senden der Tippfehler an den Server
+        function submitTypingErrors(letterMistakes, testCompleted = false, mistakesCounter = 0) {
+            if (!wi_id) {
+                alert('Tipp-Sitzung wurde nicht korrekt gestartet.');
+                return;
+            }
+
+            const data = {
+                letterMistakes: letterMistakes,
+                wi_id: wi_id,  // wi_id der aktuellen Sitzung hinzufügen
+                test_completed: testCompleted,  // Flag hinzufügen, ob der Test abgeschlossen ist
+                mistakes_counter: mistakesCounter  // Fehlerzähler übermitteln
+            };
+
+            fetch('/log_typing_errors', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                console.log('Ergebnis:', result);
+                // Nach erfolgreicher Übertragung die Liste leeren
+                letterMistakes.length = 0;
+            })
+            .catch(error => {
+                console.error('Fehler beim Senden der Tippfehler:', error);
+            });
+        }
+
+        // Eingaben des Benutzers überwachen und überprüfen
+        let mistakeMade = false;  // Verfolgt, ob ein Fehler gemacht wurde
+        let currentErrorChar = '';  // Speichert den aktuellen falschen Buchstaben
+
+        document.addEventListener('keydown', function(event) {
+            const keyPressed = event.key;
+
+            // Liste der zu ignorierenden Tasten
+            const ignoredKeys = ['Shift', 'Control', 'Alt', 'CapsLock', 'Tab'];
+
+            if (ignoredKeys.includes(keyPressed)) {
+                return;
+            }
+
+            const currentChar = fullText[currentCharIndex];  // Der aktuelle Buchstabe im Text
+
+            // Leertaste wird gedrückt
+            if (keyPressed === ' ') {
+                event.preventDefault();  // Verhindere Standardaktion der Leertaste
+                if (currentChar === ' ') {
+                    currentCharIndex++;
+                    updateDisplay();
+                    mistakeMade = false;
+                    currentErrorChar = '';
+                } else if (!mistakeMade) {
+                    markError();
+                    letterMistakes.push({
+                        incorrect_letter: keyPressed,
+                        expected_letter: currentChar  // Falscher und erwarteter Buchstabe
+                    });
+                    mistakesCounter++;  // Fehlerzähler erhöhen
+                    mistakeMade = true;
+                    currentErrorChar = currentChar;
+                }
+            }
+            // Richtiges Zeichen wird gedrückt
+            else if (keyPressed === currentChar) {
+                if (mistakeMade) {
+                    mistakeMade = false;
+                    currentErrorChar = '';  // Fehler behoben, also zurücksetzen
+                }
+                currentCharIndex++;
+                updateDisplay();
+
+                // Prüfen, ob der gesamte Text fertig getippt wurde
+                if (currentCharIndex === fullText.length) {
+                    alert('Geschafft! Du hast den gesamten Text korrekt eingegeben.');
+
+                    // Alle Fehler und den Abschluss des Tippvorgangs übermitteln
+                    submitTypingErrors(letterMistakes, true, mistakesCounter);  // Zähler und Abschluss übermitteln
+
+                    // Fehlerliste und Zähler nach Übertragung leeren
+                    letterMistakes.length = 0;
+                    mistakesCounter = 0;  // Zähler zurücksetzen für den nächsten Test
+                }
+            }
+            // Falsches Zeichen wird gedrückt
+            else if (!mistakeMade) {
+                markError();
+                letterMistakes.push({
+                    incorrect_letter: keyPressed,
+                    expected_letter: currentChar  // Falscher und erwarteter Buchstabe
+                });
+                mistakesCounter++;  // Fehlerzähler erhöhen
+                mistakeMade = true;  // Fehler gemacht, also den Zustand aktualisieren
+                currentErrorChar = currentChar;
+
+                // Fehler sofort übermitteln
+                submitTypingErrors(letterMistakes);
+
+                // Fehlerliste nach Übertragung leeren
+                letterMistakes.length = 0;
+            }
+        });
+
+        // Funktion zum Markieren von Fehlern
+        function markError() {
+            const textDisplay = document.getElementById('text-to-type');
+            textDisplay.children[currentCharIndex].classList.remove('untyped');
+            textDisplay.children[currentCharIndex].classList.add('incorrect');
+        }
+
+        // Texte bei Seitenaufruf laden
+        window.onload = loadTexts;
+    </script>
+</body>
+</html>
