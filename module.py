@@ -1,33 +1,35 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSONB
 
-# Initialisiere die Datenbank
+# Initialize the database
 db = SQLAlchemy()
 
-# Definiere das Datenbankschema mit Klassen
+# Define the database schema with classes
 class User(db.Model):
     __tablename__ = 'users'
     user_id = db.Column(db.String, primary_key=True)
     username = db.Column(db.String, unique=True, nullable=False)
-    email = db.Column(db.String, unique=True, nullable=False)  # Neue Spalte für E-Mail
-    password_hash = db.Column(db.String(255), nullable=False)  # Neue Spalte für Passwort-Hash
-    role = db.Column(db.String)
+    email = db.Column(db.String, unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String)                     # User/Admin etc.
     first_name = db.Column(db.String)
     last_name = db.Column(db.String)
     birthdate = db.Column(db.Date)
     account_type = db.Column(db.String)
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.now())
-    letter_stats = db.Column(JSONB, nullable=True)  # Stellt sicher, dass es ein JSONB-Feld ist
+    letter_stats = db.Column(JSONB, nullable=True)  # A dict with all the mistakes done for each letter
+                                                    # There could be a dict added, that count every letter typed,
+                                                    # to create a percentage analysis on errors overall
 
     # Relationships (did not test it in this form yet)
     writing_sessions = db.relationship('WritingInformation', back_populates='user')
     mistakes = db.relationship('MistakesLetters', back_populates='user')
 
-    # Funktion zum Setzen des Passworts
+    # Function for setting up the password
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
-    # Funktion zum Überprüfen des Passworts
+    # Function to check the password
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
@@ -56,10 +58,10 @@ class WritingInformation(db.Model):
     user_id = db.Column(db.String, db.ForeignKey('users.user_id'))
     mistake_count = db.Column(db.Integer)
     time_spent_in_s = db.Column(db.Float)
-    cpm = db.Column(db.Float)
+    cpm = db.Column(db.Float)       # Characters per minute
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.now())
-    ended_at = db.Column(db.TIMESTAMP)  # Endzeit (wird später gesetzt)
-    acc = db.Column(db.Numeric)     # Genauigkeit des Tippvorgangs (Accuracy)
+    ended_at = db.Column(db.TIMESTAMP)
+    acc = db.Column(db.Numeric)     # Accuracy
 
     # Relationships (did not test it in this form yet)
     user = db.relationship('User', back_populates='writing_sessions')
@@ -69,8 +71,8 @@ class MistakesLetters(db.Model):
     __tablename__ = 'mistakes_letters'
     mpl_id = db.Column(db.String, primary_key=True)
     user_id = db.Column(db.String, db.ForeignKey('users.user_id'))
-    letter = db.Column(db.String(10))  # Der fehlerhafte Buchstabe
-    expected_letter = db.Column(db.String(10))  # Der erwartete Buchstabe
+    letter = db.Column(db.String(10))           # The letter pressed when doing a mistake
+    expected_letter = db.Column(db.String(10))  # The letter that should be pressed when doing a mistake
     mistake_count = db.Column(db.Integer)
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.now())
 
@@ -78,8 +80,8 @@ class MistakesLetters(db.Model):
     user = db.relationship('User', back_populates='mistakes')
 
 
-# Funktion, um die Datenbank zu erstellen
+# Function to create the database
 def create_db(app):
-    db.init_app(app)  # Verknüpfe die App mit der SQLAlchemy-Instanz
-    with app.app_context():  # Erstellt die Tabellen innerhalb des App-Kontexts
+    db.init_app(app)  # Link the app with the SQLAlchemy instance
+    with app.app_context():  # Creates the tables within the app context
         db.create_all()
