@@ -6,29 +6,25 @@ import json
 
 app = Flask(__name__)
 
-# PostgreSQL-Datenbankverbindung
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@localhost/tenfingers'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = 'supersecretkey'  # Für die Sitzungen (Sessions)
 
-# Initialisiere die Datenbank und verknüpfe sie mit der App
+# Initialize the database and connect it with the app
 create_db(app)
 
-# Route für die Startseite
-
-
+# Route for the start page
 @app.route('/')
 def home():
-    if 'user_id' in session:  # Prüfen, ob der Benutzer eingeloggt ist
-        return redirect(url_for('index'))  # Weiterleitung zur Index-Seite
+    if 'user_id' in session:  # Check if user is logged in
+        return redirect(url_for('index'))  # If yes, go to index.html
     else:
-        return redirect(url_for('login'))  # Weiterleitung zur Login-Seite
+        return redirect(url_for('login'))  # If no, back to login.html
 
 
 @app.route('/index')
 def index():
     if 'user_id' in session:
-        # Benutzer ist eingeloggt, Index-Seite anzeigen
         return render_template('index.html')
     else:
         flash('Bitte loggen Sie sich ein, um fortzufahren.')
@@ -38,25 +34,24 @@ def index():
 # Login Route
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """Zeigt die Login-Seite an und verarbeitet Login-Daten"""
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
 
         try:
-            # Benutzer anhand der E-Mail-Adresse suchen
+            # Searching user with the email
             user = User.query.filter_by(email=email).first()
 
-            # Debug-Ausgabe
+            # Debug-print
             print(f"Benutzer gefunden: {user}")
 
-            # Überprüfe das Passwort mit dem Passwort-Hash
+            # Checking password with the password hash
             if user and check_password_hash(user.password_hash, password):
-                # Benutzer-Session speichern
+                # Safe user session
                 session['user_id'] = user.user_id
                 print(f"User-ID {user.user_id} in der Session gespeichert")
 
-                # Weiterleitung zur Index-Seite nach erfolgreichem Login
+                # Go to index.html after successfully logged in
                 return redirect(url_for("index"))
             else:
                 flash("Ungültige E-Mail oder Passwort")
@@ -68,46 +63,44 @@ def login():
             flash("Ein Fehler ist aufgetreten")
             return "Ein Fehler ist aufgetreten"
 
-    # GET-Anfrage: Zeige die Login-Seite an
     return render_template("login.html")
 
 
 @app.route("/logout")
 def logout():
     """Logs the user out by clearing the session"""
-    session.pop('user_id', None)  # Benutzer aus der Session entfernen
-    return redirect(url_for("login"))  # Nach dem Logout zur Login-Seite umleiten
+    session.pop('user_id', None)        # Delete user session
+    return redirect(url_for("login"))   # After logging out, going back to login.html
 
 
 @app.route("/dashboard")
 def dashboard():
     """User Dashboard - nur für eingeloggte Benutzer"""
     if 'user_id' not in session:
-        # Wenn der Benutzer nicht eingeloggt ist, zur Login-Seite umleiten
+        # If user is not logged in, back to login.html
         return redirect(url_for("login"))
 
-    # Logik für das Dashboard
+    # Logic for the dashboard
     return f"Willkommen, Benutzer {session['user_id']}!"
 
 
 @app.before_request
 def require_login():
     """Prüft, ob der Benutzer eingeloggt ist, bevor geschützte Seiten aufgerufen werden"""
-    # Liste von Routen, die ohne Login erreichbar sein sollen
+    # List of routes, that can be accessed without logged in
     allowed_routes = ['login', 'register']
 
-    # Prüfe, ob der Benutzer eingeloggt ist
+    # Check if user is logged in
     if 'user_id' not in session:
-        # Leite zur Login-Seite weiter, wenn der Benutzer nicht eingeloggt ist
         if request.endpoint not in allowed_routes:
             return redirect(url_for('login'))
 
     else:
-        # Benutzer ist in der Session, überprüfe, ob er in der Datenbank existiert
+        # User has a session, check in database if user exists
         user = User.query.filter_by(user_id=session['user_id']).first()
         if not user:
-            # Wenn der Benutzer nicht in der Datenbank ist, zur Login-Seite umleiten
-            session.pop('user_id', None)  # Benutzer aus der Session entfernen
+            # If user isn't in the database, back to login.html
+            session.pop('user_id', None)  # Delete user from session
             return redirect(url_for('login'))
 
 
@@ -119,23 +112,23 @@ def register():
         last_name = request.form['last_name']
         email = request.form['email']
         password = request.form['password']
-        birthdate = request.form['birthdate']  # Geburtsdatum aus dem Formular
+        birthdate = request.form['birthdate']
 
-        # Überprüfe, ob die E-Mail bereits existiert
+        # Check if email exists
         if User.query.filter_by(email=email).first():
             flash('Diese E-Mail wird bereits verwendet.')
             return redirect(url_for('register'))
 
-        # Benutzer erstellen
+        # Create user
         new_user = User(
-            user_id=str(uuid.uuid4()),  # Erstelle eine eindeutige Benutzer-ID
+            user_id=str(uuid.uuid4()),  # Create a unique user id
             username=username,
             first_name=first_name,
             last_name=last_name,
             email=email,
             password_hash=generate_password_hash(password),
-            birthdate=birthdate,  # Geburtsdatum speichern
-            role='user'  # Rolle standardmäßig auf 'user' setzen
+            birthdate=birthdate,
+            role='user'                 # Role will be set to user
         )
         db.session.add(new_user)
         db.session.commit()
@@ -160,23 +153,23 @@ def add_sample_texts():
 def start_typing_session():
     data = request.get_json()
     text_id = data.get('text_id')
-    user_id = session.get('user_id')  # Benutzer-ID aus der Session holen
+    user_id = session.get('user_id')
 
     if not user_id or not text_id:
         return jsonify({"error": "Benutzer nicht eingeloggt oder Text nicht gefunden"}), 403
 
-    # Schreibinformation bei Start des Tippvorgangs erstellen
+    # Create write information at the start of the typing process
     writing_info = WritingInformation(
-        wi_id=str(uuid.uuid4()),  # Eindeutige ID
+        wi_id=str(uuid.uuid4()),
         user_id=user_id,
         text_id=text_id,
-        mistake_count=0,  # Fehler sind zu Beginn 0
-        time_spent_in_s=None,  # Zeit wird am Ende berechnet
-        cpm=None,  # CPM wird am Ende berechnet
-        ended_at=None  # Endzeit wird später gesetzt
+        mistake_count=0,        # Errors start at 0
+        time_spent_in_s=None,   # Time will be added at the end
+        cpm=None,               # CPM will be calculated at the end
+        ended_at=None           # Time will be added at the end
     )
     db.session.add(writing_info)
-    db.session.commit()  # created_at wird durch den Commit automatisch gesetzt
+    db.session.commit()  # created_at is set automatically by the commit
 
     return jsonify({"status": "success", "wi_id": writing_info.wi_id})
 
@@ -185,98 +178,97 @@ def start_typing_session():
 def log_typing_errors():
     data = request.get_json()
     letter_mistakes = data.get('letterMistakes', [])
-    wi_id = data.get('wi_id')  # wi_id vom Frontend übergeben
-    user_id = session.get('user_id')  # Benutzer-ID aus der Session holen
-    mistakes_counter = data.get('mistakes_counter', 0)  # Fehlerzähler vom Frontend
+    wi_id = data.get('wi_id')                           # wi_id transferred from the frontend
+    user_id = session.get('user_id')                    # Get user ID from the session
+    mistakes_counter = data.get('mistakes_counter', 0)  # Error counter from the frontend
 
     if not user_id or not wi_id:
         return jsonify({"error": "Benutzer nicht eingeloggt oder Schreibinformationen nicht gefunden"}), 403
 
-    # Schreibinformation laden
+    # Loading writing information
     writing_info = WritingInformation.query.filter_by(wi_id=wi_id).first()
 
     if writing_info is None:
         return jsonify({"error": "Schreibinformation nicht gefunden"}), 404
 
-    # Tippfehler (Buchstaben) sofort in mistakes_letters speichern
+    # Save typing errors (letters) immediately in mistakes_letters
     for mistake in letter_mistakes:
-        mistakes_counter += 1  # Fehlerzähler erhöhen
+        mistakes_counter += 1                       # Error counter +1
         new_mistake = MistakesLetters(
-            mpl_id=str(uuid.uuid4()),  # Eindeutige ID für jeden Fehler
-            user_id=user_id,  # Benutzer-ID speichern
+            mpl_id=str(uuid.uuid4()),               # Unique ID for every mistake
+            user_id=user_id,
             letter=mistake['incorrect_letter'],
-            expected_letter=mistake.get('expected_letter'),  # Der erwartete Buchstabe
+            expected_letter=mistake.get('expected_letter'),
             mistake_count=1
         )
-        db.session.add(new_mistake)  # Fehler sofort speichern
+        db.session.add(new_mistake)  # Save mistake immediately
 
-    db.session.commit()  # Commit für die Tippfehler (mistakes_letters)
+    db.session.commit()  # Commit for the typos (mistakes_letters)
 
-    # Fehlerzähler in writing_information speichern
+    # Save error counter in writing_information
     writing_info.mistake_count = mistakes_counter
 
-    # Schreibinformation sollte erst aktualisiert werden, nachdem der Test abgeschlossen ist
-    if data.get('test_completed'):  # Test abgeschlossen
-        # Ende der Tippübung (aktuelle Zeit als Endzeit)
+    # Write information should only be updated after the test has been completed
+    if data.get('test_completed'):  # Test finished
+        # End of the typing exercise (current time as end time)
         ended_at = db.func.now()
         writing_info.ended_at = ended_at
 
-        # Berechne die Zeitdifferenz in Sekunden
+        # Calculate the time difference in seconds
         time_spent_in_s = db.session.query(
             db.func.extract('epoch', writing_info.ended_at - writing_info.created_at)
         ).scalar()
 
-        time_spent_in_s = round(time_spent_in_s)  # Zeit auf die Sekunde runden
+        time_spent_in_s = round(time_spent_in_s)  # Round time to the second
         writing_info.time_spent_in_s = time_spent_in_s
 
-        # Textlänge abrufen
+        # Retrieve text length
         text = Text.query.filter_by(text_id=writing_info.text_id).first()
         text_length = text.text_length
 
-        # Berechne CPM (Characters per Minute)
-        if time_spent_in_s > 0:  # Vermeide Division durch 0
+        # Calculate CPM (Characters per Minute)
+        if time_spent_in_s > 0:  # Avoid division by 0
             cpm = (text_length / time_spent_in_s) * 60
         else:
             cpm = 0
 
-        writing_info.cpm = round(cpm)  # CPM runden und speichern
+        writing_info.cpm = round(cpm)  # Round and save CPM
 
-        # Berechne die Genauigkeit
+        # Calculate accuracy
         if text_length > 0:
             accuracy = 1 - (writing_info.mistake_count / text_length)
-            writing_info.acc = round(accuracy, 4) * 100 # Genauigkeit runden und speichern
+            writing_info.acc = round(accuracy, 4) * 100     # Round and save accuracy
         else:
-            writing_info.acc = 0  # Falls keine Textlänge vorhanden ist
+            writing_info.acc = 0                            # If no text length is available
 
-        db.session.commit()  # Commit für die Aktualisierung
+        db.session.commit()  # Commit for the update
 
-    # Aktualisieren der Buchstabenstatistik in der users-Tabelle
+    # Updating the letter statistics in the users table
     user = User.query.filter_by(user_id=user_id).first()
 
-    # Sicherstellen, dass letter_stats als Dictionary existiert
+    # Ensure that letter_stats exists as a dictionary
     if user.letter_stats is None:
         user.letter_stats = {}
 
-    # Falls letter_stats bereits Daten enthält, sicherstellen, dass es als Dictionary geladen wird
+    # If letter_stats already contains data, ensure that it is loaded as a dictionary
     if isinstance(user.letter_stats, str):
         user.letter_stats = json.loads(user.letter_stats)
 
-    # Aktualisieren der Buchstabenstatistik
+    # Updating the letter statistics
     for mistake in letter_mistakes:
-        expected_letter = mistake['expected_letter']  # Den erwarteten Buchstaben verwenden
+        expected_letter = mistake['expected_letter']
 
-        # Wenn der Buchstabe bereits existiert, erhöhen wir den Zähler
+        # If the letter already exists, we increment the counter
         if expected_letter in user.letter_stats:
-            user.letter_stats[expected_letter] += 1  # Zähler für den erwarteten Buchstaben erhöhen
+            user.letter_stats[expected_letter] += 1
         else:
-            user.letter_stats[expected_letter] = 1  # Neuer Buchstabe hinzufügen und Zähler auf 1 setzen
+            user.letter_stats[expected_letter] = 1
 
-    # Nach der Aktualisierung das Dictionary wieder als JSONB speichern
+    # After updating, save the dictionary as JSONB again
     user.letter_stats = json.dumps(user.letter_stats)
 
-    db.session.commit()  # Letzter Commit, um die letter_stats zu speichern
+    db.session.commit()  # Last commit to save the letter_stats
 
-    # Rückgabe einer erfolgreichen Antwort, um den Fehler zu beheben
     return jsonify({"status": "success"})
 
 
@@ -302,6 +294,6 @@ def get_text(text_id):
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()  # Erstellt die Tabellen in der Datenbank, falls sie nicht existieren
+        db.create_all()         # Creates the tables in the database if they do not exist
         print("Tabellen wurden erfolgreich erstellt.")
     app.run(debug=True)
