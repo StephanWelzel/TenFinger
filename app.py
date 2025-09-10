@@ -1,14 +1,15 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 from module import db, create_db, MistakesLetters, WritingInformation, User, Text
-from werkzeug.security import check_password_hash, generate_password_hash
 import uuid
-import json
+import logging
+from config import Config
+from auth import auth_bp
+
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@localhost/tenfingers'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.secret_key = 'supersecretkey'  # Für die Sitzungen (Sessions)
+app.config.from_object(Config)
+app.register_blueprint(auth_bp)
 
 # Initialize the database and connect it with the app
 create_db(app)
@@ -19,7 +20,7 @@ def home():
     if 'user_id' in session:  # Check if user is logged in
         return redirect(url_for('index'))  # If yes, go to index.html
     else:
-        return redirect(url_for('login'))  # If no, back to login.html
+        return redirect(url_for('auth.login'))  # If no, back to login.html
 
 
 @app.route('/index')
@@ -28,57 +29,16 @@ def index():
         return render_template('index.html')
     else:
         flash('Bitte loggen Sie sich ein, um fortzufahren.')
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
 
 
-# Login Route
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-
-        try:
-            # Searching user with the email
-            user = User.query.filter_by(email=email).first()
-
-            # Debug-print
-            print(f"Benutzer gefunden: {user}")
-
-            # Checking password with the password hash
-            if user and check_password_hash(user.password_hash, password):
-                # Safe user session
-                session['user_id'] = user.user_id
-                print(f"User-ID {user.user_id} in der Session gespeichert")
-
-                # Go to index.html after successfully logged in
-                return redirect(url_for("index"))
-            else:
-                flash("Ungültige E-Mail oder Passwort")
-                print("Ungültige E-Mail oder Passwort")
-
-        except Exception as e:
-            db.session.rollback()
-            print(f"Fehler beim Login: {e}")
-            flash("Ein Fehler ist aufgetreten")
-            return "Ein Fehler ist aufgetreten"
-
-    return render_template("login.html")
-
-
-@app.route("/logout")
-def logout():
-    """Logs the user out by clearing the session"""
-    session.pop('user_id', None)        # Delete user session
-    return redirect(url_for("login"))   # After logging out, going back to login.html
-
-
+# Dashboard Route
 @app.route("/dashboard")
 def dashboard():
     """User Dashboard - nur für eingeloggte Benutzer"""
     if 'user_id' not in session:
         # If user is not logged in, back to login.html
-        return redirect(url_for("login"))
+        return redirect(url_for("auth.login"))
 
     # Logic for the dashboard
     return f"Willkommen, Benutzer {session['user_id']}!"
@@ -88,12 +48,12 @@ def dashboard():
 def require_login():
     """Prüft, ob der Benutzer eingeloggt ist, bevor geschützte Seiten aufgerufen werden"""
     # List of routes, that can be accessed without logged in
-    allowed_routes = ['login', 'register']
+    allowed_routes = ['auth.login', 'auth.register', 'static']
 
     # Check if user is logged in
     if 'user_id' not in session:
         if request.endpoint not in allowed_routes:
-            return redirect(url_for('login'))
+            return redirect(url_for('auth.login'))
 
     else:
         # User has a session, check in database if user exists
@@ -101,42 +61,9 @@ def require_login():
         if not user:
             # If user isn't in the database, back to login.html
             session.pop('user_id', None)  # Delete user from session
-            return redirect(url_for('login'))
+            return redirect(url_for('auth.login'))
 
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        first_name = request.form['first_name']
-        last_name = request.form['last_name']
-        email = request.form['email']
-        password = request.form['password']
-        birthdate = request.form['birthdate']
-
-        # Check if email exists
-        if User.query.filter_by(email=email).first():
-            flash('Diese E-Mail wird bereits verwendet.')
-            return redirect(url_for('register'))
-
-        # Create user
-        new_user = User(
-            user_id=str(uuid.uuid4()),  # Create a unique user id
-            username=username,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            password_hash=generate_password_hash(password),
-            birthdate=birthdate,
-            role='user'                 # Role will be set to user
-        )
-        db.session.add(new_user)
-        db.session.commit()
-
-        flash('Registrierung erfolgreich! Sie können sich jetzt einloggen.')
-        return redirect(url_for('login'))
-
-    return render_template("register.html")
 
 
 @app.route('/add_sample_texts')
@@ -192,18 +119,21 @@ def log_typing_errors():
         return jsonify({"error": "Schreibinformation nicht gefunden"}), 404
 
     # Save typing errors (letters) immediately in mistakes_letters
+    new_mistakes = []
     for mistake in letter_mistakes:
         mistakes_counter += 1                       # Error counter +1
-        new_mistake = MistakesLetters(
-            mpl_id=str(uuid.uuid4()),               # Unique ID for every mistake
-            user_id=user_id,
-            letter=mistake['incorrect_letter'],
-            expected_letter=mistake.get('expected_letter'),
-            mistake_count=1
+        new_mistakes.append(
+            MistakesLetters(
+                mpl_id=str(uuid.uuid4()),           # Unique ID for every mistake
+                user_id=user_id,
+                letter=mistake['incorrect_letter'],
+                expected_letter=mistake.get('expected_letter'),
+                mistake_count=1
+            )
         )
-        db.session.add(new_mistake)  # Save mistake immediately
-
-    db.session.commit()  # Commit for the typos (mistakes_letters)
+    if new_mistakes:
+        db.session.add_all(new_mistakes)
+        db.session.commit()  # Commit for the typos (mistakes_letters)
 
     # Save error counter in writing_information
     writing_info.mistake_count = mistakes_counter
@@ -250,10 +180,6 @@ def log_typing_errors():
     if user.letter_stats is None:
         user.letter_stats = {}
 
-    # If letter_stats already contains data, ensure that it is loaded as a dictionary
-    if isinstance(user.letter_stats, str):
-        user.letter_stats = json.loads(user.letter_stats)
-
     # Updating the letter statistics
     for mistake in letter_mistakes:
         expected_letter = mistake['expected_letter']
@@ -264,9 +190,6 @@ def log_typing_errors():
         else:
             user.letter_stats[expected_letter] = 1
 
-    # After updating, save the dictionary as JSONB again
-    user.letter_stats = json.dumps(user.letter_stats)
-
     db.session.commit()  # Last commit to save the letter_stats
 
     return jsonify({"status": "success"})
@@ -276,9 +199,9 @@ def log_typing_errors():
 def get_texts():
     texts = Text.query.all()
     if texts:
-        print(f"Texte gefunden: {texts}")
+        app.logger.info("Texte gefunden: %s", texts)
     else:
-        print("Keine Texte gefunden.")
+        app.logger.info("Keine Texte gefunden.")
     text_list = [{'text_id': text.text_id, 'content': text.content} for text in texts]
     return jsonify(text_list)
 
@@ -295,5 +218,5 @@ def get_text(text_id):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()         # Creates the tables in the database if they do not exist
-        print("Tabellen wurden erfolgreich erstellt.")
-    app.run(debug=True)
+        app.logger.info("Tabellen wurden erfolgreich erstellt.")
+    app.run(debug=app.config.get('DEBUG', False))

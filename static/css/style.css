@@ -1,0 +1,5 @@
+body { font-family: Arial, sans-serif; }
+.text { font-size: 24px; margin-top: 20px; }
+.correct { color: green; }
+.incorrect { color: red; }
+.untyped { color: black; }
