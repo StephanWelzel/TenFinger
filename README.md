@@ -44,4 +44,4 @@ This is a web-based application designed to help users learn and improve their t
 
 ## License
 
-This priject is licensed under the MIT License.
+This project is licensed under the MIT License.
